@@ -30,6 +30,8 @@ import (
 	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/github/fakegithub"
 	"k8s.io/test-infra/prow/plugins"
+	"k8s.io/test-infra/prow/plugins/approve/approvers"
+	"k8s.io/test-infra/prow/repoowners"
 )
 
 // TestPluginConfig validates that there are no duplicate repos in the approve plugin config.
@@ -1068,3 +1070,119 @@ Approvers can cancel approval by writing ` + "`/approve cancel`" + ` in a commen
 
 // TODO: cache approvers 'GetFilesApprovers' and 'GetCCs' since these are called repeatedly and are
 // expensive.
+
+type fakeOwnersClient struct{}
+
+func (foc fakeOwnersClient) LoadRepoOwners(org, repo, base string) (repoowners.RepoOwnerInterface, error) {
+	return fakeRepoOwners{}, nil
+}
+
+type fakeRepoOwners struct {
+	fakeRepo
+}
+
+func (fro fakeRepoOwners) FindLabelsForFile(path string) sets.String {
+	return sets.NewString()
+}
+
+func (fro fakeRepoOwners) FindReviewersOwnersForFile(path string) string {
+	return ""
+}
+
+func (fro fakeRepoOwners) LeafReviewers(path string) sets.String {
+	return sets.NewString()
+}
+
+func (fro fakeRepoOwners) Reviewers(path string) sets.String {
+	return sets.NewString()
+}
+
+// func (fro fakeRepoOwners) FindReviewersOwners
+
+func getTestHandleFunc() func(log *logrus.Entry, ghc githubClient, repo approvers.RepoInterface, opts *plugins.Approve, pr *state) error {
+	return func(log *logrus.Entry, ghc githubClient, repo approvers.RepoInterface, opts *plugins.Approve, pr *state) error {
+		return nil
+	}
+}
+
+func TestHandleGenericComment(t *testing.T) {
+
+	tests := []struct {
+		name         string
+		commentEvent github.GenericCommentEvent
+		expectHandle bool
+	}{
+		{
+			name: "approve command",
+			commentEvent: github.GenericCommentEvent{
+				Repo: github.Repo{
+					Owner: github.User{
+						Login: "org",
+					},
+					Name: "repo",
+				},
+				Action: github.GenericCommentActionCreated,
+				IsPR:   true,
+				Body:   "/approve",
+				Number: 1,
+				User: github.User{
+					Login: "author",
+				},
+			},
+			expectHandle: true,
+		},
+	}
+
+	var handled bool
+	handleFunc = func(log *logrus.Entry, ghc githubClient, repo approvers.RepoInterface, opts *plugins.Approve, pr *state) error {
+		log.Info("called")
+		handled = true
+		return nil
+	}
+	pr := &github.PullRequest{
+		Base: github.PullRequestBranch{
+			Ref: "branch",
+		},
+	}
+	fghc := &fakegithub.FakeClient{
+		PullRequests: map[int]*github.PullRequest{1: pr},
+	}
+
+	for _, test := range tests {
+		err := handleGenericComment(
+			logrus.WithField("plugin", "approve"),
+			fghc,
+			fakeOwnersClient{},
+			&plugins.Configuration{},
+			&test.commentEvent,
+		)
+
+		if test.expectHandle && !handled {
+			t.Error("not handled but expected")
+		}
+
+		if !test.expectHandle && handled {
+			t.Error("handled but expected not")
+		}
+
+		if err != nil {
+			t.Errorf("error calling handleGenericComment: %v", err)
+		}
+	}
+	// cases:
+	// returns nil without calling handle if:
+	// - Action != Created or !IsPR or IssueState == "closed"
+	// - no approval command in body
+	// otherwise calls handleFunc with given state{}
+}
+
+func TestHandleReviewEvent(t *testing.T) {
+	// create a fake PluginClient and GenericCommentEvent
+	// cases:
+	// returns nil without calling handle if:
+	// - Action != Submitted
+	// - approval command in body
+	// - no approval state
+	// otherwise calls handleFunc with given state{}
+
+}
