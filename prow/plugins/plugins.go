@@ -169,6 +169,7 @@ type Configuration struct {
 	Heart         Heart                `json:"heart,omitempty"`
 	Label         *Label               `json:"label,omitempty"`
 	Lgtm          []Lgtm               `json:"lgtm,omitempty"`
+	Merge         []Merge              `json:"merge,omitempty"`
 	RepoMilestone map[string]Milestone `json:"repo_milestone,omitempty"`
 	RequireSIG    RequireSIG           `json:"requiresig,omitempty"`
 	Slack         Slack                `json:"slack,omitempty"`
@@ -355,6 +356,11 @@ type Lgtm struct {
 	// ReviewActsAsLgtm indicates that a Github review of "approve" or "request changes"
 	// acts as adding or removing the lgtm label
 	ReviewActsAsLgtm bool `json:"review_acts_as_lgtm,omitempty"`
+}
+
+type Merge struct {
+	// Repos is either of the form org/repos or just org.
+	Repos []string `json:"repos,omitempty"`
 }
 
 type Cat struct {
