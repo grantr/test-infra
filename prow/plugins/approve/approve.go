@@ -401,7 +401,13 @@ func handle(log *logrus.Entry, ghc githubClient, repo approvers.RepoInterface, o
 		return comments[i].CreatedAt.Before(comments[j].CreatedAt)
 	})
 	approveComments := filterComments(comments, approvalMatcher(botName, opts.LgtmActsAsApprove, opts.ReviewActsAsApprove))
-	addApprovers(&approversHandler, approveComments, pr.author, opts.ReviewActsAsApprove)
+
+	if pr.repo == "grantr/prow-testing" {
+		log.Infof("Using alternate addApprovers for repo %v", pr.repo)
+		addApproversUnderTest(&approversHandler, approveComments, pr.author, opts.LgtmActsAsApprove, opts.ReviewActsAsApprove)
+	} else {
+		addApprovers(&approversHandler, approveComments, pr.author, opts.ReviewActsAsApprove)
+	}
 
 	for _, user := range pr.assignees {
 		approversHandler.AddAssignees(user.Login)
@@ -586,6 +592,62 @@ func addApprovers(approversHandler *approvers.Approvers, approveComments []*comm
 				)
 			}
 
+		}
+	}
+}
+
+// addApproversUnderTest iterates through the list of comments on a PR
+// and identifies all of the people that have said /approve or used an equivalent
+// approve command and adds them to the Approvers.  The function uses the latest
+// approve or cancel comment to determine the Users intention. A review in
+// requested changes state is considered a cancel.
+func addApproversUnderTest(approversHandler *approvers.Approvers, approveComments []*comment, prAuthor string, lgtmActsAsApprove, reviewActsAsApprove bool) {
+	for _, c := range approveComments {
+		if c.Author == "" {
+			continue
+		}
+
+		// if reviewActsAsApprove is enabled, interpret the ReviewState as an
+		// approval command. These commands will be overridden by conflicting
+		// commands in the review comment if they exist.
+		if reviewActsAsApprove {
+			switch c.ReviewState {
+			case github.ReviewStateApproved:
+				approversHandler.AddReviewStateApprover(c.Author, c.HTMLURL, false)
+
+			case github.ReviewStateChangesRequested:
+				approversHandler.RemoveApprover(c.Author)
+
+			default:
+				// Other states do not count as approval commands:
+				// - ReviewStatePending
+				// - ReviewStateCommented
+				// - ReviewStateDismissed
+			}
+		}
+
+		for _, match := range commandRegex.FindAllStringSubmatch(c.Body, -1) {
+			cmd := strings.ToUpper(match[1])
+			args := strings.ToLower(strings.TrimSpace(match[2]))
+			noIssue := args == noIssueArgument
+
+			// If lgtmActsAsApprove is enabled, then approve and cancel based on
+			// lgtm and lgtm cancel commands.
+			if cmd == approveCommand || (cmd == lgtmCommand && lgtmActsAsApprove) {
+				// If args contains cancel, this is a cancel command
+				if strings.Contains(args, cancelArgument) {
+					approversHandler.RemoveApprover(c.Author)
+				} else {
+					switch {
+					case c.Author == prAuthor:
+						approversHandler.AddAuthorSelfApprover(c.Author, c.HTMLURL, noIssue)
+					case cmd == lgtmCommand:
+						approversHandler.AddLGTMer(c.Author, c.HTMLURL, noIssue)
+					default:
+						approversHandler.AddApprover(c.Author, c.HTMLURL, noIssue)
+					}
+				}
+			}
 		}
 	}
 }

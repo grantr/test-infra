@@ -303,7 +303,7 @@ func (ap *Approvers) AddApprover(login, reference string, noIssue bool) {
 	}
 }
 
-// AddSAuthorSelfApprover adds the author self approval
+// AddAuthorSelfApprover adds the author self approval
 func (ap *Approvers) AddAuthorSelfApprover(login, reference string, noIssue bool) {
 	if ap.shouldNotOverrideApproval(login, noIssue) {
 		return
@@ -311,6 +311,19 @@ func (ap *Approvers) AddAuthorSelfApprover(login, reference string, noIssue bool
 	ap.approvers[strings.ToLower(login)] = Approval{
 		Login:     login,
 		How:       "Author self-approved",
+		Reference: reference,
+		NoIssue:   noIssue,
+	}
+}
+
+// AddReviewStateApprover adds a new review state approval
+func (ap *Approvers) AddReviewStateApprover(login, reference string, noIssue bool) {
+	if ap.shouldNotOverrideApproval(login, noIssue) {
+		return
+	}
+	ap.approvers[strings.ToLower(login)] = Approval{
+		Login:     login,
+		How:       "Review approved",
 		Reference: reference,
 		NoIssue:   noIssue,
 	}
