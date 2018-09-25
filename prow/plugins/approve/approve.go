@@ -604,6 +604,7 @@ func addApprovers(approversHandler *approvers.Approvers, approveComments []*comm
 // approve or cancel comment to determine the Users intention. A review in
 // requested changes state is considered a cancel.
 func addApproversUnderTest(log *logrus.Entry, approversHandler *approvers.Approvers, approveComments []*comment, prAuthor string, lgtmActsAsApprove, reviewActsAsApprove bool) {
+	log.Infof("existing approvals: %v", approversHandler.ListApprovals())
 	for _, c := range approveComments {
 		if c.Author == "" {
 			continue
