@@ -402,9 +402,11 @@ func handle(log *logrus.Entry, ghc githubClient, repo approvers.RepoInterface, o
 	})
 	approveComments := filterComments(comments, approvalMatcher(botName, opts.LgtmActsAsApprove, opts.ReviewActsAsApprove))
 
-	if pr.repo == "grantr/prow-testing" {
-		log.Infof("Using alternate addApprovers for repo %v", pr.repo)
-		addApproversUnderTest(&approversHandler, approveComments, pr.author, opts.LgtmActsAsApprove, opts.ReviewActsAsApprove)
+	if pr.org == "grantr" && pr.repo == "prow-testing" {
+		debugLog := log.WithField("approveDebug", "true").WithField("repo", pr.repo).WithField("org", pr.org).WithField("number", pr.number)
+		debugLog.Info("Using alternate addApprovers")
+		debugLog.Infof("handle PR: %#v", pr)
+		addApproversUnderTest(debugLog, &approversHandler, approveComments, pr.author, opts.LgtmActsAsApprove, opts.ReviewActsAsApprove)
 	} else {
 		addApprovers(&approversHandler, approveComments, pr.author, opts.ReviewActsAsApprove)
 	}
@@ -601,7 +603,7 @@ func addApprovers(approversHandler *approvers.Approvers, approveComments []*comm
 // approve command and adds them to the Approvers.  The function uses the latest
 // approve or cancel comment to determine the Users intention. A review in
 // requested changes state is considered a cancel.
-func addApproversUnderTest(approversHandler *approvers.Approvers, approveComments []*comment, prAuthor string, lgtmActsAsApprove, reviewActsAsApprove bool) {
+func addApproversUnderTest(log *logrus.Entry, approversHandler *approvers.Approvers, approveComments []*comment, prAuthor string, lgtmActsAsApprove, reviewActsAsApprove bool) {
 	for _, c := range approveComments {
 		if c.Author == "" {
 			continue
@@ -613,12 +615,15 @@ func addApproversUnderTest(approversHandler *approvers.Approvers, approveComment
 		if reviewActsAsApprove {
 			switch c.ReviewState {
 			case github.ReviewStateApproved:
+				log.Infof("add review state approver: %v", c.Author)
 				approversHandler.AddReviewStateApprover(c.Author, c.HTMLURL, false)
 
 			case github.ReviewStateChangesRequested:
+				log.Infof("remove review state approver: %v", c.Author)
 				approversHandler.RemoveApprover(c.Author)
 
 			default:
+				log.Infof("irrelevant review state: %v by: %v", c.ReviewState, c.Author)
 				// Other states do not count as approval commands:
 				// - ReviewStatePending
 				// - ReviewStateCommented
@@ -636,20 +641,25 @@ func addApproversUnderTest(approversHandler *approvers.Approvers, approveComment
 			if cmd == approveCommand || (cmd == lgtmCommand && lgtmActsAsApprove) {
 				// If args contains cancel, this is a cancel command
 				if strings.Contains(args, cancelArgument) {
+					log.Infof("remove approver by %v cancel: %v", cmd, c.Author)
 					approversHandler.RemoveApprover(c.Author)
 				} else {
 					switch {
 					case c.Author == prAuthor:
+						log.Infof("add author self approver: %v", c.Author)
 						approversHandler.AddAuthorSelfApprover(c.Author, c.HTMLURL, noIssue)
 					case cmd == lgtmCommand:
+						log.Infof("add lgtm approver: %v", c.Author)
 						approversHandler.AddLGTMer(c.Author, c.HTMLURL, noIssue)
 					default:
+						log.Infof("add normal approver: %v", c.Author)
 						approversHandler.AddApprover(c.Author, c.HTMLURL, noIssue)
 					}
 				}
 			}
 		}
 	}
+	log.Infof("approved: %v by: %v", approversHandler.IsApproved(), approversHandler.ListApprovals())
 }
 
 // optionsForRepo gets the plugins.Approve struct that is applicable to the indicated repo.
